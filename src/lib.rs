@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::collections::VecDeque;
 use std::rc::Rc;
 
 type Vertex2 = (f32, f32);
@@ -14,13 +15,13 @@ pub enum Tesselation {
 // an infinite tiling with but scaled and anchored at an origin (offsets from
 // the original vertex)
 pub struct ScaledTesselation {
-    angle: f32,
-    scale: f32,
-    offset: (f32, f32),
-    spec: Tesselation,
+    pub angle: f32,
+    pub scale: f32,
+    pub offset: (f32, f32),
+    pub spec: Tesselation,
 }
 
-struct RoseTree {
+pub struct RoseTree {
     node: Vertex2,
     angle: f32,
     children: Vec<Rc<RefCell<RoseTree>>>,
@@ -54,16 +55,14 @@ fn soft_contains(vec: &Vec<(f32, f32)>, v: (f32, f32), epsilon: f32) -> bool {
     false
 }
 
-// stub
-fn tile_tree(st: &ScaledTesselation, mut depth: u32) -> Rc<RefCell<RoseTree>> {
-    use std::collections::VecDeque;
-
+// TODO: figure out if this actually works with tests and stuff
+pub fn tile_tree(st: &ScaledTesselation, mut depth: u32) -> Rc<RefCell<RoseTree>> {
     let mut seen = Vec::new();
     let mut queue = VecDeque::new();
     let mut queue2 = VecDeque::new();
 
     let root = RoseTree {
-        node: (0.0, 0.0),
+        node: (200.0, 200.0),
         angle: 0.0,
         children: Vec::new(),
     };
@@ -88,15 +87,15 @@ fn tile_tree(st: &ScaledTesselation, mut depth: u32) -> Rc<RefCell<RoseTree>> {
                 match &st.spec {
                     Tesselation::Regular(tes) => {
                         let pivot = node.borrow().node;
-                        let p = (pivot.0 + 1.0, pivot.1);
+                        let p = (pivot.0 + 20.0, pivot.1);
                         let a = node.borrow().angle;
                         for i in tes {
-                            let angle: f32 = 180.0 * (*i as f32 - 2.0) + a;
+                            let angle: f32 = 180.0 * (*i as f32 - 2.0) / *i as f32 + a;
                             let point = rotate_around(p, pivot, angle);
                             let child = Rc::new(RefCell::new(RoseTree {
                                 node: point,
                                 angle,
-                                children: vec![]
+                                children: vec![],
                             }));
                             node.borrow_mut().children.push(child.clone());
                             queue2.push_back(child);
@@ -118,12 +117,11 @@ fn tile_tree(st: &ScaledTesselation, mut depth: u32) -> Rc<RefCell<RoseTree>> {
         }
     }
 
-    // Root is available by this time
     root
 }
 
 // stub
-fn boxed_tile_tree(st: &ScaledTesselation, width: f64, height: f64) -> RoseTree {
+fn boxed_tile_tree(st: &ScaledTesselation, width: f32, height: f32) -> RoseTree {
     RoseTree {
         node: st.offset,
         angle: 0.0,
@@ -131,7 +129,35 @@ fn boxed_tile_tree(st: &ScaledTesselation, width: f64, height: f64) -> RoseTree 
     }
 }
 
-// stub
+pub fn render_tree(tree: Rc<RefCell<RoseTree>>, filename: &str) {
+    use draw::{shape::LineBuilder, Canvas, Color, Drawing, Style, SvgRenderer};
+
+    let mut canvas = Canvas::new(400, 400);
+
+    let mut queue = VecDeque::new();
+    queue.push_back(tree);
+
+    while let Some(node) = queue.pop_front() {
+        let node = node.borrow();
+
+        for child in node.children.iter() {
+            let borrowed = child.borrow();
+            let drawing = Drawing::new()
+                .with_shape(
+                    LineBuilder::new(node.node.0, node.node.1)
+                        .line_to(borrowed.node.0, borrowed.node.1)
+                        .build(),
+                )
+                .with_style(Style::stroked(5, Color::black()));
+            canvas.display_list.add(drawing);
+
+            queue.push_back(child.clone());
+        }
+    }
+
+    draw::render::save(&canvas, filename, SvgRenderer::new()).expect("could not save file");
+}
+
 pub fn render(mesh: &Mesh, filename: &str) {
     use draw::{shape::LineBuilder, Canvas, Color, Drawing, Style, SvgRenderer};
 
